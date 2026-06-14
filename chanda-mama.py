@@ -74,7 +74,7 @@ def calculate_settle_up(df, members):
         paid_by = row['paid_by']
         amount = float(row['amount'])
         split_between = row.get('split_between', members)
-        if not split_between: split_between = members
+        if not split_between or split_between is None: split_between = members
         share = amount / len(split_between)
         if paid_by in balances: balances[paid_by] += amount
         for member in split_between:
@@ -144,7 +144,7 @@ else:
                     st.session_state['delete_group'] = selected_group
 
             if st.session_state.get('edit_group') == selected_group:
-                with st.form("edit_form"):
+                with st.form("edit_group_form"):
                     new_name = st.text_input("Naya naam", value=selected_group)
                     c1, c2 = st.columns(2)
                     if c1.form_submit_button("✅ Save"):
@@ -224,7 +224,7 @@ else:
                 if st.session_state.edit_group!= "Personal":
                     group_info = next((g for g in groups_data if g['group_name'] == st.session_state.edit_group), None)
                     if group_info: current_members = group_info['members']
-                with st.form("edit_form"):
+                with st.form("edit_expense_form"):
                     exp_date = st.date_input("Date", value=pd.to_datetime(edit_data['exp_date']).date())
                     cats = ["Food", "Travel", "Shopping", "Bills", "Entertainment", "Rent", "Groceries", "Other"]
                     category = st.selectbox("Category", cats, index=cats.index(edit_data['category']) if edit_data['category'] in cats else 0)
@@ -269,7 +269,7 @@ else:
         groups_data = get_user_groups(st.session_state.username)
         group_names = [g['group_name'] for g in groups_data]
         if group_names:
-            selected_group = st.selectbox("Group Select Karo", group_names)
+            selected_group = st.selectbox("Group Select Karo", group_names, key="settle_group")
             group_info = next((g for g in groups_data if g['group_name'] == selected_group), None)
             df = get_expenses(st.session_state.username, selected_group)
             if group_info and not df.empty:
