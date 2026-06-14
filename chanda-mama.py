@@ -3,6 +3,7 @@ import time
 import pandas as pd
 from datetime import datetime, date
 from supabase import create_client, Client
+import urllib.parse
 
 @st.cache_resource
 def init_supabase():
@@ -16,6 +17,7 @@ st.set_page_config(page_title="Chanda Mama", page_icon="🌙", layout="wide")
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'username' not in st.session_state: st.session_state.username = ""
 if 'selected_group_key' not in st.session_state: st.session_state.selected_group_key = "Personal"
+if 'current_tab' not in st.session_state: st.session_state.current_tab = 0
 
 def register_user(username, password, upi_id):
     try:
@@ -31,9 +33,31 @@ def login_user(username, password):
         return bool(result.data)
     except: return False
 
+def get_user_upi(username):
+    try:
+        result = supabase.table('users').select("upi_id").eq('username', username).execute()
+        if result.data: return result.data[0]['upi_id']
+        return ""
+    except: return ""
+
 def add_expense(exp_date, category, amount, note, username, group_name, paid_by, split_between):
     try:
         supabase.table('expenses').insert({"exp_date": str(exp_date), "category": category, "amount": float(amount), "note": note, "username": username, "group_name": group_name, "paid_by": paid_by, "split_between": split_between}).execute()
+        return True
+    except: return False
+
+def add_settlement(group_name, paid_by, paid_to, amount, note):
+    try:
+        supabase.table('expenses').insert({
+            "exp_date": str(date.today()),
+            "category": "Settlement",
+            "amount": float(amount),
+            "note": f"Paid to {paid_to}: {note}",
+            "username": paid_by,
+            "group_name": group_name,
+            "paid_by": paid_by,
+            "split_between": [paid_to]
+        }).execute()
         return True
     except: return False
 
@@ -69,7 +93,7 @@ def get_user_groups(username):
     except: return []
 
 def calculate_settle_up(df, members):
-    if df.empty or not members: return []
+    if df.empty or not members: return [], {}
     balances = {m: 0.0 for m in members}
     for _, row in df.iterrows():
         paid_by = row['paid_by']
@@ -88,11 +112,53 @@ def calculate_settle_up(df, members):
     while i < len(d_list) and j < len(c_list):
         debtor, debt_amt = d_list[i]; creditor, cred_amt = c_list[j]
         pay_amt = min(debt_amt, cred_amt)
-        settlements.append(f"{debtor} → {creditor}: ₹{pay_amt:.2f}")
+        settlements.append({"from": debtor, "to": creditor, "amount": round(pay_amt, 2)})
         d_list[i] = (debtor, debt_amt - pay_amt); c_list[j] = (creditor, cred_amt - pay_amt)
         if d_list[i][1] < 0.01: i += 1
         if c_list[j][1] < 0.01: j += 1
-    return settlements
+    return settlements, balances
+
+def generate_upi_link(payee_upi, payee_name, amount, note):
+    params = {
+        "pa": payee_upi,
+        "pn": payee_name,
+        "am": str(amount),
+        "tn": note,
+        "cu": "INR"
+    }
+    return f"upi://pay?{urllib.parse.urlencode(params)}"
+
+# FOOTER CSS
+def add_footer():
+    st.markdown("""
+    <style>
+   .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        text-align: center;
+        padding: 10px;
+        font-family: 'Arial', sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 1px;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        z-index: 999;
+    }
+   .footer span {
+        background: linear-gradient(45deg, #fff, #f0f0f0);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 700;
+    }
+    </style>
+    <div class="footer">
+        Made by <span>Snehal Mahure</span> • from <span>Snehal Mahure</span> ✨
+    </div>
+    """, unsafe_allow_html=True)
 
 if not st.session_state.logged_in:
     st.title("🌙 Chanda Mama - Login Karo")
@@ -107,16 +173,25 @@ if not st.session_state.logged_in:
     with tab2:
         new_user = st.text_input("New Username", key="reg_user")
         new_pass = st.text_input("New Password", type="password", key="reg_pass")
-        upi = st.text_input("UPI ID", key="reg_upi")
+        upi = st.text_input("UPI ID", key="reg_upi", placeholder="username@upi")
         if st.button("Register", use_container_width=True):
             success, msg = register_user(new_user, new_pass, upi)
             if success: st.success(msg + " - Ab login karo")
             else: st.error(msg)
+    add_footer()
 else:
     st.title(f"🌙 Chanda Mama - Welcome {st.session_state.username}")
-    if st.sidebar.button("Logout"):
-        for key in list(st.session_state.keys()): del st.session_state[key]
-        st.rerun()
+
+    col1, col2 = st.columns([1, 10])
+    with col1:
+        if st.button("🔙", use_container_width=True, help="Back to Home"):
+            st.session_state.selected_group_key = "Personal"
+            st.session_state.current_tab = 0
+            st.rerun()
+    with col2:
+        if st.button("Logout", use_container_width=True):
+            for key in list(st.session_state.keys()): del st.session_state[key]
+            st.rerun()
 
     tab1, tab2, tab3, tab4 = st.tabs(["💸 Add Expense", "📊 My Expenses", "👥 Groups", "💰 Settle Up"])
 
@@ -135,7 +210,7 @@ else:
             col1, col2, col3, col4 = st.columns([1, 6, 1, 1])
 
             with col1:
-                if st.button("🔙", use_container_width=True):
+                if st.button("🔙", use_container_width=True, key=f"back_tab1_{selected_group}"):
                     st.session_state.selected_group_key = "Personal"
                     st.rerun()
 
@@ -211,7 +286,13 @@ else:
                 else: st.error("Amount aur Split Between daal")
 
     with tab2:
-        st.subheader("Kharcha History & Edit")
+        col1, col2 = st.columns([1, 10])
+        with col1:
+            if st.button("🔙", use_container_width=True, key="back_tab2"):
+                st.rerun()
+        with col2:
+            st.subheader("Kharcha History & Edit")
+
         groups_data = get_user_groups(st.session_state.username)
         group_names = ["Personal"] + [g['group_name'] for g in groups_data]
         selected_group = st.selectbox("Group ka Kharcha Dekho", group_names, key="view_group")
@@ -235,7 +316,7 @@ else:
                     if group_info: current_members = group_info['members']
                 with st.form("edit_expense_form"):
                     exp_date = st.date_input("Date", value=pd.to_datetime(edit_data['exp_date']).date())
-                    cats = ["Food", "Travel", "Shopping", "Bills", "Entertainment", "Rent", "Groceries", "Other"]
+                    cats = ["Food", "Travel", "Shopping", "Bills", "Entertainment", "Rent", "Groceries", "Other", "Settlement"]
                     category = st.selectbox("Category", cats, index=cats.index(edit_data['category']) if edit_data['category'] in cats else 0)
                     amount = st.number_input("Amount ₹", value=float(edit_data['amount']))
                     note = st.text_input("Note", value=edit_data['note'])
@@ -256,7 +337,13 @@ else:
         else: st.info("Abhi tak koi kharcha nahi")
 
     with tab3:
-        st.subheader("Naya Group Bana")
+        col1, col2 = st.columns([1, 10])
+        with col1:
+            if st.button("🔙", use_container_width=True, key="back_tab3"):
+                st.rerun()
+        with col2:
+            st.subheader("Naya Group Bana")
+
         with st.form("group_form", clear_on_submit=True):
             g_name = st.text_input("Group Name", placeholder="Goa Trip 2026")
             g_members = st.text_area("Members - Username comma se separate kar", placeholder="rahul,priya")
@@ -274,7 +361,13 @@ else:
         else: st.info("Tu kisi group mein nahi hai")
 
     with tab4:
-        st.subheader("Hisaab Kitab - Settle Up")
+        col1, col2 = st.columns([1, 10])
+        with col1:
+            if st.button("🔙", use_container_width=True, key="back_tab4"):
+                st.rerun()
+        with col2:
+            st.subheader("Hisaab Kitab - Settle Up")
+
         groups_data = get_user_groups(st.session_state.username)
         group_names = [g['group_name'] for g in groups_data]
         if group_names:
@@ -282,14 +375,40 @@ else:
             group_info = next((g for g in groups_data if g['group_name'] == selected_group), None)
             df = get_expenses(st.session_state.username, selected_group)
             if group_info and not df.empty:
-                settlements = calculate_settle_up(df, group_info['members'])
+                settlements, balances = calculate_settle_up(df, group_info['members'])
                 col1, col2 = st.columns(2)
                 col1.metric("Total Group Kharcha", f"₹{df['amount'].sum():,.2f}")
                 col2.metric("Total Entries", len(df))
                 st.divider()
+
                 if settlements:
                     st.write("**Kaun Kisko Kitna Dega:**")
-                    for s in settlements: st.success(s)
+                    for s in settlements:
+                        col1, col2, col3 = st.columns([3, 2, 2])
+                        with col1:
+                            st.success(f"{s['from']} → {s['to']}: ₹{s['amount']:.2f}")
+                        with col2:
+                            payee_upi = get_user_upi(s['to'])
+                            if payee_upi and s['from'] == st.session_state.username:
+                                upi_link = generate_upi_link(payee_upi, s['to'], s['amount'], f"ChandaMama-{selected_group}")
+                                st.link_button("💳 Pay via UPI", upi_link, use_container_width=True)
+                            elif s['from'] == st.session_state.username:
+                                st.warning("UPI nahi mila")
+                        with col3:
+                            if s['from'] == st.session_state.username:
+                                if st.button("✅ Mark as Paid", key=f"paid_{s['from']}_{s['to']}_{s['amount']}", use_container_width=True):
+                                    if add_settlement(selected_group, s['from'], s['to'], s['amount'], f"Settlement for {selected_group}"):
+                                        st.success("Payment recorded!")
+                                        time.sleep(1)
+                                        st.rerun()
+                    st.divider()
+                    st.write("**Current Balances:**")
+                    for member, bal in balances.items():
+                        if bal > 0.01: st.info(f"🟢 {member} ko milenge: ₹{bal:.2f}")
+                        elif bal < -0.01: st.warning(f"🔴 {member} ko dena hai: ₹{-bal:.2f}")
+                        else: st.success(f"⚪ {member}: Settled")
                 else: st.balloons(); st.info("🎉 Sab barabar hai")
             else: st.info("Is group mein abhi kharcha nahi hua")
         else: st.info("Pehle group bana")
+
+    add_footer()
