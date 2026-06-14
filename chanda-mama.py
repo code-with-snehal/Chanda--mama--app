@@ -124,7 +124,7 @@ else:
         groups_data = get_user_groups(st.session_state.username)
         group_names = ["Personal"] + [g['group_name'] for g in groups_data]
         selected_group = st.selectbox("Group Select Karo", group_names)
-        if selected_group != "Personal":  # Personal group ko edit/delete nahi karna
+ if selected_group != "Personal":  # Personal group ko edit/delete nahi karna
     col1, col2, col3, col4 = st.columns([1, 6, 1, 1])
     
     with col1:
