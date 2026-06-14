@@ -15,6 +15,7 @@ st.set_page_config(page_title="Chanda Mama", page_icon="🌙", layout="wide")
 
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'username' not in st.session_state: st.session_state.username = ""
+if 'selected_group' not in st.session_state: st.session_state.selected_group = "Personal"
 
 def register_user(username, password, upi_id):
     try:
@@ -123,13 +124,16 @@ else:
         st.subheader("Naya Kharcha Add Kar")
         groups_data = get_user_groups(st.session_state.username)
         group_names = ["Personal"] + [g['group_name'] for g in groups_data]
-        selected_group = st.selectbox("Group Select Karo", group_names)
+
+        selected_group = st.selectbox("Group Select Karo", group_names, key="group_selector", index=group_names.index(st.session_state.selected_group) if st.session_state.selected_group in group_names else 0)
+        st.session_state.selected_group = selected_group
 
         if selected_group!= "Personal":
             col1, col2, col3, col4 = st.columns([1, 6, 1, 1])
 
             with col1:
                 if st.button("🔙", use_container_width=True, key=f"back_{selected_group}"):
+                    st.session_state.selected_group = "Personal"
                     st.rerun()
 
             with col2:
@@ -165,6 +169,7 @@ else:
                     supabase.table('expenses').delete().eq('group_name', selected_group).execute()
                     supabase.table('groups').delete().eq('group_name', selected_group).eq('created_by', st.session_state.username).execute()
                     del st.session_state['delete_group']
+                    st.session_state.selected_group = "Personal"
                     st.success("Group delete ho gaya!")
                     time.sleep(1)
                     st.rerun()
