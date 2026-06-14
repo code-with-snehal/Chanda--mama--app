@@ -190,8 +190,7 @@ if selected_group != "Personal" and st.session_state.get('delete_group') == sele
         st.rerun()
 
 st.divider()
-    
-        current_members = [st.session_state.username]
+     current_members = [st.session_state.username]
         if selected_group!= "Personal":
             group_info = next((g for g in groups_data if g['group_name'] == selected_group), None)
             if group_info: current_members = group_info['members']
