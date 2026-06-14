@@ -123,45 +123,57 @@ else:
         st.subheader("Naya Kharcha Add Kar")
         groups_data = get_user_groups(st.session_state.username)
         group_names = ["Personal"] + [g['group_name'] for g in groups_data]
-        selected_group = st.selectbox("Group Select Karo", group_names)
- if selected_group != "Personal":  # Personal group ko edit/delete nahi karna
-   col1, col2 col1, col2, col3, col4 = st.columns([1,6,1,1])
-
-with col1:
-    if st.button("🔙", use_container_width=True, key=f"back_{selected_group}"):
-        st.rerun()
-
-with col2:
-    st.subheader(f"💸 {selected_group}")
-
-with col3:
-    if st.button("✏️", use_container_width=True, key=f"edit_{selected_group}"):
-        st.session_state['edit_group'] = selected_group
-
-with col4:
-    if selected_group != "Personal":
+        selected_group = st.selectbox("Group Select Karo", group_names)          
+if selected_group != "Personal":  # Personal group ko edit/delete nahi karna
+    col1, col2, col3, col4 = st.columns([1, 6, 1, 1])
+    
+    with col1:
+        if st.button("🔙", use_container_width=True, key=f"back_{selected_group}"):
+            st.rerun()
+    
+    with col2:
+        st.subheader(f"💸 {selected_group}")
+    
+    with col3:
+        if st.button("✏️", use_container_width=True, key=f"edit_{selected_group}"):
+            st.session_state['edit_group'] = selected_group
+    
+    with col4:
         if st.button("🗑️", use_container_width=True, key=f'del_{selected_group}'):
             st.session_state['delete_group'] = selected_group
-    else:
-        st.write("")
-
-if st.session_state.get('edit_group') == selected_group:
-    with st.form("edit_form"):
-        new_name = st.text_input("Naya naam", value=selected_group)
-        c1, c2 = st.columns(2)
-        if c1.form_submit_button("✅ Save"):
-            if new_name == "Personal" and selected_group != "Personal":
-                st.error("Doosra group 'Personal' naam nahi rakh sakta!")
-            else:
+    
+    # EDIT FORM
+    if st.session_state.get('edit_group') == selected_group:
+        with st.form("edit_form"):
+            new_name = st.text_input("Naya naam", value=selected_group)
+            c1, c2 = st.columns(2)
+            if c1.form_submit_button("✅ Save"):
                 supabase.table('groups').update({'group_name': new_name}).eq('group_name', selected_group).eq('created_by', st.session_state.username).execute()
                 supabase.table('expenses').update({'group_name': new_name}).eq('group_name', selected_group).execute()
                 del st.session_state['edit_group']
                 st.success("Naam badal gaya!")
                 time.sleep(1)
                 st.rerun()
-        if c2.form_submit_button("❌ Cancel"):
-            del st.session_state['edit_group']
+            if c2.form_submit_button("❌ Cancel"):
+                del st.session_state['edit_group']
+                st.rerun()
+    
+    # DELETE CONFIRM
+    if st.session_state.get('delete_group') == selected_group:
+        st.error(f"**Pakka?** `{selected_group}` aur saare expenses ud jayenge!")
+        c1, c2 = st.columns(2)
+        if c1.button("🔥 Haan Uda Do", type="primary", key="confirm_del"):
+            supabase.table('expenses').delete().eq('group_name', selected_group).execute()
+            supabase.table('groups').delete().eq('group_name', selected_group).eq('created_by', st.session_state.username).execute()
+            del st.session_state['delete_group']
+            st.success("Group delete ho gaya!")
+            time.sleep(1)
             st.rerun()
+        if c2.button("Rehne Do", key="cancel_del"):
+            del st.session_state['delete_group']
+            st.rerun()
+    
+    st.divider()
 
 if selected_group != "Personal" and st.session_state.get('delete_group') == selected_group:
     st.error(f"**Pakka?** `{selected_group}` aur saare expenses ud jayenge!")
