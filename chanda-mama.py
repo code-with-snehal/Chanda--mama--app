@@ -128,11 +128,10 @@ def generate_upi_link(payee_upi, payee_name, amount, note):
     }
     return f"upi://pay?{urllib.parse.urlencode(params)}"
 
-# FOOTER CSS
 def add_footer():
     st.markdown("""
     <style>
-   .footer {
+  .footer {
         position: fixed;
         left: 0;
         bottom: 0;
@@ -148,7 +147,7 @@ def add_footer():
         box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
         z-index: 999;
     }
-   .footer span {
+  .footer span {
         background: linear-gradient(45deg, #fff, #f0f0f0);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
@@ -275,7 +274,9 @@ else:
             paid_by = st.selectbox("Paid By", current_members)
 
             if selected_group!= "Personal":
-                split_between = st.multiselect("Split Between", current_members, default=current_members)
+                # FIX: Filter default values jo options mein hain
+                valid_defaults = [m for m in current_members if m in current_members]
+                split_between = st.multiselect("Split Between", current_members, default=valid_defaults)
             else:
                 split_between = [st.session_state.username]
 
@@ -320,8 +321,11 @@ else:
                     category = st.selectbox("Category", cats, index=cats.index(edit_data['category']) if edit_data['category'] in cats else 0)
                     amount = st.number_input("Amount ₹", value=float(edit_data['amount']))
                     note = st.text_input("Note", value=edit_data['note'])
-                    paid_by = st.selectbox("Paid By", current_members, index=current_members.index(edit_data['paid_by']) if edit_data['paid_by'] in current_members else 0)
-                    split_between = st.multiselect("Split Between", current_members, default=edit_data['split_between'])
+                    paid_by_index = current_members.index(edit_data['paid_by']) if edit_data['paid_by'] in current_members else 0
+                    paid_by = st.selectbox("Paid By", current_members, index=paid_by_index)
+                    # FIX: Sirf wahi default jo current_members mein hain
+                    valid_split = [m for m in edit_data.get('split_between', []) if m in current_members]
+                    split_between = st.multiselect("Split Between", current_members, default=valid_split)
                     col1, col2 = st.columns(2)
                     if col1.form_submit_button("Update Karo", use_container_width=True):
                         if update_expense(st.session_state.edit_id, exp_date, category, amount, note, paid_by, split_between):
