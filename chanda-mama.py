@@ -19,6 +19,7 @@ if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'username' not in st.session_state: st.session_state.username = ""
 if 'selected_group_key' not in st.session_state: st.session_state.selected_group_key = "Personal"
 if 'show_profile' not in st.session_state: st.session_state.show_profile = False
+if 'active_tab' not in st.session_state: st.session_state.active_tab = "Add Expense"
 
 def register_user(username, password, upi_id):
     try:
@@ -95,12 +96,6 @@ def create_group(group_name, members, created_by):
         return True
     except: return False
 
-def update_group_members(group_name, members):
-    try:
-        supabase.table('groups').update({"members": members}).eq('group_name', group_name).execute()
-        return True
-    except: return False
-
 def get_user_groups(username):
     try:
         result = supabase.table('groups').select("*").contains('members', [username]).execute()
@@ -140,7 +135,7 @@ def generate_upi_link(payee_upi, payee_name, amount, note):
 def add_footer():
     st.markdown("""
     <style>
- .footer {
+.footer {
         position: fixed;
         left: 0;
         bottom: 0;
@@ -156,7 +151,7 @@ def add_footer():
         box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
         z-index: 999;
     }
- .footer span {
+.footer span {
         background: linear-gradient(45deg, #fff, #f0f0f0);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
@@ -190,11 +185,13 @@ if not st.session_state.logged_in:
 else:
     st.title(f"🌙 Chanda Mama - Welcome {st.session_state.username}")
 
+    # GLOBAL TOP BAR - SIRF 1 BACK BUTTON
     col1, col2, col3 = st.columns([1, 8, 2])
     with col1:
-        if st.button("🔙", use_container_width=True, help="Back to Home"):
+        if st.button("🏠", use_container_width=True, help="Home - Add Expense"):
             st.session_state.selected_group_key = "Personal"
             st.session_state.show_profile = False
+            st.session_state.active_tab = "Add Expense"
             st.rerun()
     with col2: st.write("")
     with col3:
@@ -230,9 +227,11 @@ else:
                 st.rerun()
         st.divider()
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["💸 Add Expense", "📊 My Expenses", "👥 Groups", "💰 Settle Up", "📈 Reports"])
+    tab_names = ["💸 Add Expense", "📊 My Expenses", "👥 Groups", "💰 Settle Up", "📈 Reports"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_names)
 
     with tab1:
+        st.session_state.active_tab = "Add Expense"
         st.subheader("Naya Kharcha Add Kar")
         groups_data = get_user_groups(st.session_state.username)
         group_names = ["Personal"] + [g['group_name'] for g in groups_data]
@@ -242,17 +241,13 @@ else:
         st.session_state.selected_group_key = selected_group
 
         if selected_group!= "Personal":
-            col1, col2, col3, col4 = st.columns([1, 6, 1, 1])
+            st.subheader(f"💸 {selected_group}")
+            col1, col2, col3 = st.columns([2, 2, 6])
             with col1:
-                if st.button("🔙", use_container_width=True, key=f"back_tab1_{selected_group}"):
-                    st.session_state.selected_group_key = "Personal"
-                    st.rerun()
-            with col2: st.subheader(f"💸 {selected_group}")
-            with col3:
-                if st.button("✏️", use_container_width=True, key=f"edit_{selected_group}"):
+                if st.button("✏️ Edit Group", use_container_width=True, key=f"edit_{selected_group}"):
                     st.session_state['edit_group'] = selected_group
-            with col4:
-                if st.button("🗑️", use_container_width=True, key=f'del_{selected_group}'):
+            with col2:
+                if st.button("🗑️ Delete Group", use_container_width=True, key=f'del_{selected_group}'):
                     st.session_state['delete_group'] = selected_group
 
             if st.session_state.get('edit_group') == selected_group:
@@ -317,30 +312,22 @@ else:
                 else: st.error("Amount aur Split Between daal")
 
     with tab2:
-        col1, col2 = st.columns([1, 10])
-        with col1:
-            if st.button("🔙", use_container_width=True, key="back_tab2"):
-                st.rerun()
-        with col2: st.subheader("Kharcha History & Edit")
-
+        st.session_state.active_tab = "My Expenses"
+        st.subheader("Kharcha History & Edit")
         groups_data = get_user_groups(st.session_state.username)
         group_names = ["Personal"] + [g['group_name'] for g in groups_data]
         selected_group = st.selectbox("Group ka Kharcha Dekho", group_names, key="view_group")
         df = get_expenses(st.session_state.username, selected_group)
-
         if not df.empty:
             df['exp_date'] = pd.to_datetime(df['exp_date']).dt.date
-
             col1, col2, col3 = st.columns(3)
             with col1: search_term = st.text_input("🔍 Search Note", placeholder="Hotel, Bus...")
             with col2: filter_cat = st.selectbox("Filter Category", ["All"] + list(df['category'].unique()))
             with col3:
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Export CSV", csv, f"{selected_group}_expenses.csv", "text/csv", use_container_width=True)
-
             if search_term: df = df[df['note'].str.contains(search_term, case=False, na=False)]
             if filter_cat!= "All": df = df[df['category'] == filter_cat]
-
             for i, row in df.iterrows():
                 with st.expander(f"{row['exp_date']} | {row['category']} | ₹{row['amount']:.2f}"):
                     st.write(f"**Note:** {row['note']} | **Paid by:** {row.get('paid_by', 'N/A')} | **Split:** {', '.join(row.get('split_between', []))}")
@@ -349,7 +336,6 @@ else:
                         st.session_state.edit_id = row['id']; st.session_state.edit_data = row.to_dict(); st.session_state.edit_group = selected_group; st.rerun()
                     if col2.button("🗑️ Delete", key=f"del_{row['id']}", use_container_width=True):
                         if delete_expense(row['id']): st.success("Deleted!"); st.rerun()
-
             if 'edit_id' in st.session_state:
                 st.divider(); st.subheader("Expense Edit Karo")
                 edit_data = st.session_state.edit_data
@@ -373,7 +359,6 @@ else:
                             del st.session_state.edit_id, st.session_state.edit_data, st.session_state.edit_group; st.success("Updated!"); st.rerun()
                     if col2.form_submit_button("Cancel", use_container_width=True):
                         del st.session_state.edit_id, st.session_state.edit_data, st.session_state.edit_group; st.rerun()
-
             st.divider()
             col1, col2 = st.columns(2)
             col1.metric("Total Kharcha", f"₹{df['amount'].sum():,.2f}")
@@ -381,11 +366,8 @@ else:
         else: st.info("Abhi tak koi kharcha nahi")
 
     with tab3:
-        col1, col2 = st.columns([1, 10])
-        with col1:
-            if st.button("🔙", use_container_width=True, key="back_tab3"):
-                st.rerun()
-        with col2: st.subheader("Naya Group Bana")
+        st.session_state.active_tab = "Groups"
+        st.subheader("Naya Group Bana")
         with st.form("group_form", clear_on_submit=True):
             g_name = st.text_input("Group Name", placeholder="Goa Trip 2026")
             g_members = st.text_area("Members - Username comma se separate kar", placeholder="rahul,priya")
@@ -404,11 +386,8 @@ else:
         else: st.info("Tu kisi group mein nahi hai")
 
     with tab4:
-        col1, col2 = st.columns([1, 10])
-        with col1:
-            if st.button("🔙", use_container_width=True, key="back_tab4"):
-                st.rerun()
-        with col2: st.subheader("Hisaab Kitab - Settle Up")
+        st.session_state.active_tab = "Settle Up"
+        st.subheader("Hisaab Kitab - Settle Up")
         groups_data = get_user_groups(st.session_state.username)
         group_names = [g['group_name'] for g in groups_data]
         if group_names:
@@ -445,7 +424,6 @@ else:
                         if bal > 0.01: st.info(f"🟢 {member} ko milenge: ₹{bal:.2f}")
                         elif bal < -0.01: st.warning(f"🔴 {member} ko dena hai: ₹{-bal:.2f}")
                         else: st.success(f"⚪ {member}: Settled")
-
                     if not settlements_df.empty:
                         st.divider()
                         st.write("**Settlement History:**")
@@ -456,16 +434,11 @@ else:
         else: st.info("Pehle group bana")
 
     with tab5:
-        col1, col2 = st.columns([1, 10])
-        with col1:
-            if st.button("🔙", use_container_width=True, key="back_tab5"):
-                st.rerun()
-        with col2: st.subheader("📈 Monthly Reports & Analytics")
-
+        st.session_state.active_tab = "Reports"
+        st.subheader("📈 Monthly Reports & Analytics")
         groups_data = get_user_groups(st.session_state.username)
         group_names = ["All"] + ["Personal"] + [g['group_name'] for g in groups_data]
         selected_group_report = st.selectbox("Group Select Karo", group_names, key="report_group")
-
         if selected_group_report == "All":
             all_df = pd.DataFrame()
             for g in ["Personal"] + [g['group_name'] for g in groups_data]:
@@ -474,17 +447,14 @@ else:
             df = all_df
         else:
             df = get_expenses(st.session_state.username, selected_group_report)
-
         if not df.empty:
             df['exp_date'] = pd.to_datetime(df['exp_date'])
             df['Month'] = df['exp_date'].dt.to_period('M').astype(str)
-
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Total Spent", f"₹{df['amount'].sum():,.2f}")
             col2.metric("Total Entries", len(df))
             col3.metric("Avg per Entry", f"₹{df['amount'].mean():,.2f}")
             col4.metric("Categories", len(df['category'].unique()))
-
             st.divider()
             col1, col2 = st.columns(2)
             with col1:
@@ -497,10 +467,8 @@ else:
                 month_summary = df.groupby('Month')['amount'].sum().reset_index()
                 st.dataframe(month_summary, use_container_width=True, hide_index=True)
                 st.line_chart(df.groupby('Month')['amount'].sum())
-
             st.divider()
             st.subheader("Who Paid How Much")
-            paid_summary = df.groupby('paid_by')['amount'].sum().reset_index()
             st.bar_chart(df.groupby('paid_by')['amount'].sum())
         else: st.info("Koi data nahi mila")
 
