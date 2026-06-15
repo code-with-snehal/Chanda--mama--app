@@ -20,6 +20,7 @@ if 'username' not in st.session_state: st.session_state.username = ""
 if 'selected_group_key' not in st.session_state: st.session_state.selected_group_key = "Personal"
 if 'show_profile' not in st.session_state: st.session_state.show_profile = False
 if 'active_tab' not in st.session_state: st.session_state.active_tab = "Add Expense"
+if 'view_group_key' not in st.session_state: st.session_state.view_group_key = "Personal"
 
 def register_user(username, password, upi_id):
     try:
@@ -185,7 +186,6 @@ if not st.session_state.logged_in:
 else:
     st.title(f"🌙 Chanda Mama - Welcome {st.session_state.username}")
 
-    # GLOBAL TOP BAR - SIRF 1 BACK BUTTON
     col1, col2, col3 = st.columns([1, 8, 2])
     with col1:
         if st.button("🏠", use_container_width=True, help="Home - Add Expense"):
@@ -316,8 +316,21 @@ else:
         st.subheader("Kharcha History & Edit")
         groups_data = get_user_groups(st.session_state.username)
         group_names = ["Personal"] + [g['group_name'] for g in groups_data]
-        selected_group = st.selectbox("Group ka Kharcha Dekho", group_names, key="view_group")
-        df = get_expenses(st.session_state.username, selected_group)
+
+        # FIX: on_change add kiya group change ke liye
+        def change_view_group():
+            st.session_state.view_group_key = st.session_state.view_group_widget
+
+        selected_group = st.selectbox(
+            "Group ka Kharcha Dekho",
+            group_names,
+            key="view_group_widget",
+            index=group_names.index(st.session_state.view_group_key) if st.session_state.view_group_key in group_names else 0,
+            on_change=change_view_group
+        )
+
+        df = get_expenses(st.session_state.username, st.session_state.view_group_key)
+
         if not df.empty:
             df['exp_date'] = pd.to_datetime(df['exp_date']).dt.date
             col1, col2, col3 = st.columns(3)
@@ -325,17 +338,19 @@ else:
             with col2: filter_cat = st.selectbox("Filter Category", ["All"] + list(df['category'].unique()))
             with col3:
                 csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Export CSV", csv, f"{selected_group}_expenses.csv", "text/csv", use_container_width=True)
+                st.download_button("📥 Export CSV", csv, f"{st.session_state.view_group_key}_expenses.csv", "text/csv", use_container_width=True)
             if search_term: df = df[df['note'].str.contains(search_term, case=False, na=False)]
             if filter_cat!= "All": df = df[df['category'] == filter_cat]
+
             for i, row in df.iterrows():
                 with st.expander(f"{row['exp_date']} | {row['category']} | ₹{row['amount']:.2f}"):
                     st.write(f"**Note:** {row['note']} | **Paid by:** {row.get('paid_by', 'N/A')} | **Split:** {', '.join(row.get('split_between', []))}")
                     col1, col2 = st.columns(2)
                     if col1.button("✏️ Edit", key=f"edit_{row['id']}", use_container_width=True):
-                        st.session_state.edit_id = row['id']; st.session_state.edit_data = row.to_dict(); st.session_state.edit_group = selected_group; st.rerun()
+                        st.session_state.edit_id = row['id']; st.session_state.edit_data = row.to_dict(); st.session_state.edit_group = st.session_state.view_group_key; st.rerun()
                     if col2.button("🗑️ Delete", key=f"del_{row['id']}", use_container_width=True):
                         if delete_expense(row['id']): st.success("Deleted!"); st.rerun()
+
             if 'edit_id' in st.session_state:
                 st.divider(); st.subheader("Expense Edit Karo")
                 edit_data = st.session_state.edit_data
@@ -359,11 +374,13 @@ else:
                             del st.session_state.edit_id, st.session_state.edit_data, st.session_state.edit_group; st.success("Updated!"); st.rerun()
                     if col2.form_submit_button("Cancel", use_container_width=True):
                         del st.session_state.edit_id, st.session_state.edit_data, st.session_state.edit_group; st.rerun()
+
             st.divider()
             col1, col2 = st.columns(2)
             col1.metric("Total Kharcha", f"₹{df['amount'].sum():,.2f}")
             col2.metric("Total Entries", len(df))
-        else: st.info("Abhi tak koi kharcha nahi")
+        else:
+            st.info(f"{st.session_state.view_group_key} mein abhi tak koi kharcha nahi")
 
     with tab3:
         st.session_state.active_tab = "Groups"
