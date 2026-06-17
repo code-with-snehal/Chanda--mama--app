@@ -14,8 +14,8 @@ def init_supabase():
     return create_client(url, key)
 
 supabase: Client = init_supabase()
-st.set_page_config(page_title="Chanda Mama Pro", page_icon="🌙", layout="wide")
-
+st.set_page_config(page_title="Chanda Mama Pro", page_icon="🌙", layout="wide",menu_items={'Get Help': None,'Report a bug': None,'About': None})
+   
 # Session state init
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'username' not in st.session_state: st.session_state.username = ""
